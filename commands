@@ -1,0 +1,13 @@
+# ── Virtual environment ──────────────────────────────────────────────────────
+python -m venv env_voice_assistant              # create virtual environment
+.\env_voice_assistant\Scripts\Activate.ps1      # activate (PowerShell)
+deactivate                                      # deactivate
+
+# ── Dependencies ─────────────────────────────────────────────────────────────
+pip install -r requirements.txt          # install from requirements file
+pip list                                 # verify installed packages
+pip freeze > requirements.txt            # export current env to requirements
+
+# ── Run application ──────────────────────────────────────────────────────────
+python app.py                             # web server  → http://localhost:5000
+python chatbot.py                         # CLI chatbot (type 'exit' to quit)
