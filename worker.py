@@ -1,79 +1,55 @@
-from contextlib import nullcontext
+import io
+import os
+import tempfile
+import wave
 
-from openai import OpenAI
-import requests
+from faster_whisper import WhisperModel
+from piper import PiperVoice
+from groq import Groq
 
-openai_client = OpenAI()
+groq_client = Groq(api_key=os.getenv('GROQ_API_KEY'))
+
+# Models are loaded once at startup to avoid reloading on every request
+_whisper = WhisperModel(
+    os.getenv('WHISPER_MODEL', 'small'),
+    device='cpu',
+    compute_type='int8'
+)
+_piper_voice = PiperVoice.load(
+    os.getenv('PIPER_MODEL_PATH', 'models/tts/en_US-lessac-medium.onnx')
+)
 
 
 def speech_to_text(audio_binary):
-    # Set up watson STT api url
-    base_url = 'https://sn-watson-stt.labs.skills.network'
-    api_url  = base_url + '/speech-to-text/api/v1/recognize'
-
-    # Set up parameter for our Http request
-    params = { 'model': 'en-US_Multimedia',	}
-
-    # Set up teh body of oour HTTP request
-    body = audio_binary
-
-    # Send a HHTP post request
-    response = requests.post(
-        api_url,
-        params = params,
-        data   = body
-    ).json()
-
-    # Parse the response to get our transcribed text
-    text = null
-    while bool(response.get('results')):
-        print('Speech to text response: ', response)
-        text = response.get('results').pop().get('alternatives').pop().get('transcript')
+    with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
+        tmp.write(audio_binary)
+        tmp_path = tmp.name
+    try:
+        segments, _ = _whisper.transcribe(tmp_path)
+        text = ' '.join(s.text for s in segments).strip()
         print('Recognised text: ', text)
-        return text
+    finally:
+        os.unlink(tmp_path)
+    return text or None
 
-    return None
 
+def text_to_speech(text, voice=''):
+    audio_buffer = io.BytesIO()
+    with wave.open(audio_buffer, 'wb') as wav_out:
+        _piper_voice.synthesize_wav(text, wav_out)
+    print('text to speech: generated', len(audio_buffer.getvalue()), 'bytes')
+    return audio_buffer.getvalue()
 
-def text_to_speech(text, voice=""):
-    # Set up Watson Text-To-Speech HTTP Api url
-    base_url = 'https://sn-watson-tts.labs.skills.network'
-    api_url  = base_url + '/text-to-speech/api/v1/synthesize?output=output_text.wav'
+def process_message(user_message):
+    prompt = 'Act like a personal assistant. You can respond to questions, translate sentences, summarize news and give recommendations. Keep responses concise - 2 to 3 sentences maximum'
 
-    # Adding voice parameter in api_url if the user has selected a preferred voice
-    if voice != '' and voice != 'default':
-        api_url += '&voice=' + voice
-
-    # Set the headers for our HTTP request
-    headers = {
-        'Accept': 'audio/wav',
-        'Content-Type': 'application/json',
-    }
-
-    # Set the body for our HTTP request
-    json_data = {
-        'text': text,
-    }
-    # Send a HTTP Post request to Watson Text-to-Speech Service
-    response = requests.post(api_url, headers = headers, json = json_data)
-    print('text to speech response:', response)
-    return response.content
-
-def openai_process_message(user_message):
-    # Set the prompr for OpenAI
-    prompt = 'Act like a personal assistant, You can respond to questions, translate sentences, summarize news and give recommendations. Keep responses concise - 2 to 3 sentences maximum'
-
-    # Call the OpenAI to process our prompt
-    openai_response = openai_client.chat.completions.create(
-        model    = 'gpt-5-nano',
-        messages = [
-            { 'role': 'system', 'content': prompt },
-            { 'role': 'user',   'content': user_message}
-        ],
-        max_completion_tokens = 1000
+    response = groq_client.chat.completions.create(
+        model=os.getenv('GROQ_MODEL', 'llama-3.3-70b-versatile'),
+        messages=[
+            {'role': 'system', 'content': prompt},
+            {'role': 'user',   'content': user_message}
+        ]
     )
-    print('OpenAI response: ', openai_response)
-
-    # Parse the response to get the response message for our prompt
-    response_text = openai_response.choices[0].message.content
-    return response_text
+    ai_text = response.choices[0].message.content
+    print('Groq response text:', ai_text)
+    return ai_text

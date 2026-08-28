@@ -1,9 +1,19 @@
 import base64
 import json
-from flask import Flask, render_template, request
-from worker import speech_to_text, text_to_speech, openai_process_message
-from flask_cors import CORS
 import os
+from dotenv import load_dotenv
+
+load_dotenv()  # must run before worker import so API keys are available
+
+try:
+    import truststore
+    truststore.inject_into_ssl()  # use system CA certificates to trust corporate proxies
+except ImportError:
+    pass
+
+from flask import Flask, render_template, request
+from flask_cors import CORS
+from worker import speech_to_text, text_to_speech, process_message
 
 app = Flask(__name__)
 cors = CORS(app, resources={r"/*": {"origins": "*"}})
@@ -14,7 +24,7 @@ def index():
 
 @app.route('/speech-to-text', methods = ['POST'])
 def speech_to_text_route():
-    print('Processing speech to speech_to_text_route()')
+    print(' ...... Start processing speech_to_text_route() ......')
 
     # Get yhe user's speech from their request
     audio_binary = request.data
@@ -27,41 +37,48 @@ def speech_to_text_route():
         status   = 200,
         mimetype = 'application/json'
     )
-    print(response)
+    print('Response speech_to_text_route(): ', response)
     return response
 
 @app.route('/process-message', methods = ['POST'])
 def process_prompt_route():
     # Get user's message from their request
     user_message = request.json['userMessage']
-    print('user_message: ', user_message)
+    print('...... Start processing process_prompt_route() ......', user_message)
 
     # Get user's preferred voice from their request
     voice = request.json['voice']
     print('voice', voice)
 
-    # Call openai_process_message function to process the user's message and get a response back
-    openai_response_text = openai_process_message(user_message)
+    try:
+        ai_response_text = process_message(user_message)
+        ai_response_text = os.linesep.join([s for s in ai_response_text.splitlines() if s])
 
-    # Clean the response to remove any emptylines
-    openai_response_text = os.linesep.join([s for s in openai_response_text.splitlines() if s])
+        ai_response_speech = text_to_speech(ai_response_text, voice)
+        ai_response_speech = base64.b64encode(ai_response_speech).decode('utf-8')
 
-    # Call our text_to_speech function to convert OpenAI Api's reponse to speech
-    openai_response_speech = text_to_speech(openai_response_text, voice)
+        response = app.response_class(
+            response = json.dumps(
+                {'aiResponseText'  : ai_response_text,
+                 'aiResponseSpeech': ai_response_speech}),
+            status   = 200,
+            mimetype = 'application/json'
+        )
+    except Exception as e:
+        import traceback
+        print('Unexpected error type:', type(e).__name__)
+        print('Unexpected error detail:', e)
+        print(traceback.format_exc())
+        msg = str(e)
+        status = 503 if 'overloaded' in msg.lower() or 'rate limit' in msg.lower() else 500
+        error_text = 'The AI service is currently overloaded. Please try again in a few seconds.' if status == 503 else 'An unexpected error occurred. Please try again.'
+        response = app.response_class(
+            response = json.dumps({'error': error_text}),
+            status   = status,
+            mimetype = 'application/json'
+        )
 
-    # convert openai_response_speech to base64 string so it can be sent back in the JSON response
-    openai_response_speech = base64.b64encode(openai_response_speech).decode('utf-8')
-
-    # Send a JSON response back to the user containing their message's response both in text and speech formats
-    response = app.response_class(
-        response = json.dumps(
-            {'openaiResponseText'  : openai_response_text,
-             'openaiResponseSpeech': openai_response_speech}),
-        status   = 200,
-        mimetype = 'application/json'
-    )
-
-    print('response: ', response)
+    print('response process_prompt_route(): ', response)
     return response
 
 if __name__ == '__main__':

@@ -37,14 +37,17 @@ const getSpeechToText = async (userRecording) => {
 };
 
 const processUserMessage = async (userMessage) => {
-  let response = await fetch(baseUrl + "/process-message", {
+  let res = await fetch(baseUrl + "/process-message", {
     method: "POST",
     headers: { Accept: "application/json", "Content-Type": "application/json" },
     body: JSON.stringify({ userMessage: userMessage, voice: voiceOption }),
   });
-  response = await response.json();
-  console.log(response);
-  return response;
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "An error occurred. Please try again.");
+  }
+  console.log(data);
+  return data;
 };
 
 const cleanTextInput = (value) => {
@@ -151,23 +154,27 @@ const populateUserMessage = (userMessage, userRecording) => {
 
 const populateBotResponse = async (userMessage) => {
   await showBotLoadingAnimation();
-  const response = await processUserMessage(userMessage);
-  responses.push(response);
+  try {
+    const response = await processUserMessage(userMessage);
+    responses.push(response);
 
-  const repeatButtonID = getRandomID();
-  botRepeatButtonIDToIndexMap[repeatButtonID] = responses.length - 1;
-  hideBotLoadingAnimation();
-  // Append the random message to the message list
-  $("#message-list").append(
-    `<div class='message-line'><div class='message-box${
-      !lightMode ? " dark" : ""
-    }'>${
-      response.openaiResponseText
-    }</div><button id='${repeatButtonID}' class='btn volume repeat-button' onclick='playResponseAudio("data:audio/wav;base64," + responses[botRepeatButtonIDToIndexMap[this.id]].openaiResponseSpeech);console.log(this.id)'><i class='fa fa-volume-up'></i></button></div>`
-  );
-
-  playResponseAudio("data:audio/wav;base64," + response.openaiResponseSpeech);
-
+    const repeatButtonID = getRandomID();
+    botRepeatButtonIDToIndexMap[repeatButtonID] = responses.length - 1;
+    hideBotLoadingAnimation();
+    $("#message-list").append(
+      `<div class='message-line'><div class='message-box${
+        !lightMode ? " dark" : ""
+      }'>${
+        response.aiResponseText
+      }</div><button id='${repeatButtonID}' class='btn volume repeat-button' onclick='playResponseAudio("data:audio/wav;base64," + responses[botRepeatButtonIDToIndexMap[this.id]].aiResponseSpeech);console.log(this.id)'><i class='fa fa-volume-up'></i></button></div>`
+    );
+    playResponseAudio("data:audio/wav;base64," + response.aiResponseSpeech);
+  } catch (error) {
+    hideBotLoadingAnimation();
+    $("#message-list").append(
+      `<div class='message-line'><div class='message-box error-message'>${error.message}</div></div>`
+    );
+  }
   scrollToBottom();
 };
 
