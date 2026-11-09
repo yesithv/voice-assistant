@@ -1,0 +1,16 @@
+.git/
+.idea/
+.vscode/
+env/
+env_*/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.env
+.env.*
+models/
+assets/
+tests/
+test_api.http

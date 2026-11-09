@@ -1,0 +1,28 @@
+GET http://127.0.0.1:8000
+
+###
+
+POST http://127.0.0.1:8000/process-message
+Content-Type: application/json
+
+{
+  "userMessage": "Translate 'good morning' into Spanish"
+}
+
+###
+
+# Invalid request -> 400 Bad Request
+POST http://127.0.0.1:8000/process-message
+Content-Type: application/json
+
+{
+  "userMessage": ""
+}
+
+###
+
+# Send a local recording (any format supported by FFmpeg)
+POST http://127.0.0.1:8000/speech-to-text
+Content-Type: audio/wav
+
+< ./sample.wav

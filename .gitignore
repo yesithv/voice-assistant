@@ -129,12 +129,26 @@ celerybeat.pid
 
 # Environments
 .env
+.env.*
+!.env.example
 .venv
 env/
+env_*/
 venv/
 ENV/
 env.bak/
 venv.bak/
+
+# Downloaded models (see scripts/download_models.py)
+models/
+.cache/
+
+# IDE and editor files
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+*.code-workspace
 
 # Spyder project settings
 .spyderproject
